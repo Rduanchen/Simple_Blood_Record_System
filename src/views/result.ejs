@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>阿嬤血壓紀錄</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- <link rel="stylesheet" href="styles.css" /> -->
+    <!-- Flatpickr 日期選擇器庫 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/zh-tw.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <div class="container">
+        <h1>阿嬤血壓歷史紀錄</h1>
+
+        <div class="action-buttons">
+          <button @click="navigateToRecordPage" class="btn primary">記錄新血壓</button>
+          <button @click="downloadData" class="btn secondary">下載資料</button>
+        </div>
+
+        <div v-if="loading" class="loading-spinner">
+          <div class="spinner"></div>
+          <p>載入中...</p>
+        </div>
+
+        <div v-else-if="error" class="error-message">
+          <p>{{ error }}</p>
+          <button @click="fetchRecords" class="btn">重試</button>
+        </div>
+
+        <div v-else-if="records.length === 0" class="empty-state">
+          <p>沒有血壓紀錄</p>
+        </div>
+
+        <div v-else class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>收縮壓</th>
+                <th>舒張壓</th>
+                <th>心跳</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(record, index) in records" :key="record.id">
+                <!-- 日期選擇器單元格 -->
+                <td class="date-cell">
+                  <div class="date-display" @click="showDatePicker(record)">
+                    {{ formatDate(record.date) }}
+                    <span class="edit-icon">📅</span>
+                  </div>
+                </td>
+                <td
+                  contenteditable="true"
+                  @input="handleInput(record.id, 'systolic', $event.target.innerText)"
+                  @blur="updateRecord(record.id)"
+                >
+                  {{ record.systolic }}
+                </td>
+                <td
+                  contenteditable="true"
+                  @input="handleInput(record.id, 'diastolic', $event.target.innerText)"
+                  @blur="updateRecord(record.id)"
+                >
+                  {{ record.diastolic }}
+                </td>
+                <td
+                  contenteditable="true"
+                  @input="handleInput(record.id, 'pulse', $event.target.innerText)"
+                  @blur="updateRecord(record.id)"
+                >
+                  {{ record.pulse }}
+                </td>
+                <td>
+                  <button @click="confirmDelete(record.id)" class="btn delete">刪除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 日期選擇器彈窗 -->
+        <div class="date-picker-modal" v-if="showDatePickerModal">
+          <div class="date-picker-content">
+            <h2>選擇日期和時間</h2>
+            <input ref="dateTimeInput" type="text" class="date-time-picker" placeholder="選擇日期和時間" />
+            <div class="modal-actions">
+              <button @click="cancelDateSelection" class="btn secondary">取消</button>
+              <button @click="confirmDateSelection" class="btn primary">確認</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 確認刪除的對話框 -->
+        <div class="modal" v-if="showDeleteModal">
+          <div class="modal-content">
+            <h2>確認刪除</h2>
+            <p>您確定要刪除此筆血壓記錄嗎？此操作無法復原。</p>
+            <div class="modal-actions">
+              <button @click="cancelDelete" class="btn secondary">取消</button>
+              <button @click="deleteRecord" class="btn delete">確認刪除</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 狀態提示 -->
+        <div class="toast" v-if="toast.show">
+          <div :class="['toast-content', toast.type]">
+            {{ toast.message }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      const { createApp, ref, reactive, onMounted, nextTick } = Vue;
+
+      createApp({
+        setup() {
+          const records = ref([]);
+          const loading = ref(true);
+          const error = ref(null);
+          const showDeleteModal = ref(false);
+          const recordToDelete = ref(null);
+          const toast = reactive({
+            show: false,
+            message: '',
+            type: 'info',
+            timeout: null,
+          });
+
+          // 記錄暫存的更改
+          const tempChanges = reactive({});
+
+          // 日期選擇器相關狀態
+          const showDatePickerModal = ref(false);
+          const dateTimeInput = ref(null);
+          const currentEditRecord = ref(null);
+          const flatpickrInstance = ref(null);
+
+          // 顯示日期選擇器
+          const showDatePicker = (record) => {
+            currentEditRecord.value = record;
+            showDatePickerModal.value = true;
+
+            // 等待DOM更新後初始化Flatpickr
+            nextTick(() => {
+              const currentDate = record.date ? new Date(parseInt(record.date)) : new Date();
+
+              // 初始化Flatpickr
+              flatpickrInstance.value = flatpickr(dateTimeInput.value, {
+                enableTime: true,
+                dateFormat: 'Y-m-d H:i',
+                locale: 'zh_tw',
+                time_24hr: true,
+                defaultDate: currentDate,
+                minuteIncrement: 1,
+              });
+
+              flatpickrInstance.value.open();
+            });
+          };
+
+          // 取消日期選擇
+          const cancelDateSelection = () => {
+            if (flatpickrInstance.value) {
+              flatpickrInstance.value.destroy();
+            }
+            showDatePickerModal.value = false;
+            currentEditRecord.value = null;
+          };
+
+          // 確認日期選擇
+          const confirmDateSelection = () => {
+            if (currentEditRecord.value && flatpickrInstance.value) {
+              const selectedDate = flatpickrInstance.value.selectedDates[0];
+
+              if (selectedDate) {
+                // 更新記錄的日期（存為時間戳）
+                const timestamp = selectedDate.getTime().toString();
+                handleInput(currentEditRecord.value.id, 'date', timestamp);
+                updateRecord(currentEditRecord.value.id);
+              }
+            }
+
+            cancelDateSelection(); // 關閉選擇器並清理
+          };
+
+          // 處理輸入變更
+          const handleInput = (id, field, value) => {
+            if (!tempChanges[id]) {
+              tempChanges[id] = {};
+            }
+            tempChanges[id][field] = value;
+
+            // 同時更新本地顯示數據
+            const record = records.value.find((r) => r.id === id);
+            if (record) {
+              record[field] = value;
+            }
+          };
+
+          // 更新單條記錄
+          const updateRecord = async (idKey) => {
+            console.log('更新記錄:', idKey);
+            console.log(typeof idKey);
+            if (!tempChanges[idKey]) return;
+
+            const record = records.value.find((r) => r.id === idKey);
+            if (!record) return;
+
+            try {
+              loading.value = true;
+              await axios.get('./api/update', {
+                params: {
+                  id: idKey,
+                  date: record.date,
+                  systolic: record.systolic,
+                  diastolic: record.diastolic,
+                  pulse: record.pulse,
+                },
+              });
+
+              delete tempChanges[idKey];
+              showToast('記錄已更新', 'success');
+            } catch (err) {
+              console.error('更新記錄失敗:', err);
+              showToast('更新失敗，請再試一次', 'error');
+            } finally {
+              loading.value = false;
+            }
+          };
+
+          // 顯示提示訊息
+          const showToast = (message, type = 'info', duration = 3000) => {
+            if (toast.timeout) {
+              clearTimeout(toast.timeout);
+            }
+
+            toast.message = message;
+            toast.type = type;
+            toast.show = true;
+
+            toast.timeout = setTimeout(() => {
+              toast.show = false;
+            }, duration);
+          };
+
+          // 從API獲取所有記錄
+          const fetchRecords = async () => {
+            loading.value = true;
+            error.value = null;
+
+            try {
+              const response = await axios.get('./api/all');
+              records.value = response.data;
+              loading.value = false;
+            } catch (err) {
+              console.error('獲取記錄失敗:', err);
+              error.value = '無法載入資料，請檢查網路連接並重試';
+              loading.value = false;
+            }
+          };
+
+          // 格式化日期
+          const formatDate = (timestamp) => {
+            if (!timestamp) return '未記錄日期';
+
+            try {
+              const date = new Date(parseInt(timestamp));
+              if (isNaN(date)) return '無效日期';
+
+              return date.toLocaleDateString('zh-TW', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+            } catch (err) {
+              return timestamp;
+            }
+          };
+
+          // 確認刪除記錄
+          const confirmDelete = (id) => {
+            recordToDelete.value = id;
+            showDeleteModal.value = true;
+          };
+
+          // 取消刪除操作
+          const cancelDelete = () => {
+            showDeleteModal.value = false;
+            recordToDelete.value = null;
+          };
+
+          // 執行刪除操作
+          const deleteRecord = async () => {
+            const id = recordToDelete.value;
+            if (!id) return;
+
+            try {
+              loading.value = true;
+              await axios.get('./api/delete', {
+                params: { id: id },
+              });
+
+              // 成功刪除後，從本地數據中移除該記錄
+              const index = records.value.findIndex((r) => r.id === id);
+              if (index !== -1) {
+                records.value.splice(index, 1);
+              }
+
+              showToast('記錄已成功刪除', 'success');
+            } catch (err) {
+              console.error('刪除記錄失敗:', err);
+              showToast('刪除失敗，請再試一次', 'error');
+            } finally {
+              loading.value = false;
+              showDeleteModal.value = false;
+              recordToDelete.value = null;
+            }
+          };
+
+          // 下載CSV文件
+          const downloadData = () => {
+            // 建立CSV內容
+            let csvContent = '日期,收縮壓,舒張壓,心跳\n';
+
+            records.value.forEach((record) => {
+              const formattedDate = formatDate(record.date);
+              csvContent += `"${formattedDate}",${record.systolic || ''},${record.diastolic || ''},${record.pulse || ''}\n`;
+            });
+
+            // 建立並下載文件
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+
+            link.setAttribute('href', url);
+            link.setAttribute('download', `阿嬤血壓紀錄_${new Date().toLocaleDateString()}.csv`);
+            link.style.display = 'none';
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast('開始下載資料', 'info');
+          };
+
+          // 跳轉到記錄頁面
+          const navigateToRecordPage = () => {
+            window.location.href = './';
+          };
+
+          // 頁面載入時獲取記錄
+          onMounted(() => {
+            fetchRecords();
+          });
+
+          return {
+            records,
+            loading,
+            error,
+            showDeleteModal,
+            toast,
+            formatDate,
+            handleInput,
+            updateRecord,
+            confirmDelete,
+            cancelDelete,
+            deleteRecord,
+            downloadData,
+            navigateToRecordPage,
+            fetchRecords,
+            // 日期選擇器相關
+            dateTimeInput,
+            showDatePickerModal,
+            showDatePicker,
+            cancelDateSelection,
+            confirmDateSelection,
+          };
+        },
+      }).mount('#app');
+    </script>
+  </body>
+  <style>
+    /* 全局樣式 */
+    :root {
+      --primary-color: #4caf50;
+      --primary-dark: #388e3c;
+      --secondary-color: #2196f3;
+      --danger-color: #f44336;
+      --gray-light: #f5f5f5;
+      --gray: #e0e0e0;
+      --text-dark: #333333;
+      --text-light: #ffffff;
+      --border-radius: 8px;
+      --shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Microsoft JhengHei', Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text-dark);
+      background-color: var(--gray-light);
+      padding: 20px;
+    }
+
+    /* 容器樣式 */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: white;
+      border-radius: var(--border-radius);
+      box-shadow: var(--shadow);
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      color: var(--primary-color);
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid var(--gray);
+    }
+
+    h2 {
+      font-size: 1.8rem;
+      margin-bottom: 15px;
+    }
+
+    /* 按鈕樣式 */
+    .btn {
+      padding: 12px 20px;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      transition:
+        background-color 0.3s,
+        transform 0.2s;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .primary {
+      background-color: var(--primary-color);
+      color: var(--text-light);
+    }
+
+    .primary:hover {
+      background-color: var(--primary-dark);
+    }
+
+    .secondary {
+      background-color: var(--secondary-color);
+      color: var(--text-light);
+    }
+
+    .secondary:hover {
+      background-color: #1976d2;
+    }
+
+    .delete {
+      background-color: var(--danger-color);
+      color: var(--text-light);
+    }
+
+    .delete:hover {
+      background-color: #d32f2f;
+    }
+
+    /* 表格樣式 */
+    .table-container {
+      overflow-x: auto;
+      margin: 20px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 1.2rem;
+      margin-bottom: 20px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--gray);
+      padding: 15px;
+      text-align: center;
+    }
+
+    th {
+      background-color: var(--primary-color);
+      color: var(--text-light);
+      font-weight: bold;
+    }
+
+    tr:nth-child(even) {
+      background-color: var(--gray-light);
+    }
+
+    td[contenteditable='true'] {
+      transition: background-color 0.3s;
+    }
+
+    td[contenteditable='true']:hover {
+      background-color: #e8f5e9;
+    }
+
+    td[contenteditable='true']:focus {
+      outline: 2px solid var(--primary-color);
+      background-color: white;
+    }
+
+    /* 按鈕區域 */
+    .action-buttons {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .action-buttons .btn {
+      flex: 1;
+      padding: 15px;
+      font-size: 1.3rem;
+    }
+
+    /* 模態對話框 */
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-content {
+      width: 90%;
+      max-width: 500px;
+      background-color: white;
+      padding: 30px;
+      border-radius: var(--border-radius);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 15px;
+      margin-top: 25px;
+    }
+
+    /* 加載動畫 */
+    .loading-spinner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 50px 0;
+    }
+
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid var(--gray);
+      border-radius: 50%;
+      border-top-color: var(--primary-color);
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* 提示訊息 */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      z-index: 2000;
+    }
+
+    .toast-content {
+      padding: 15px 25px;
+      border-radius: var(--border-radius);
+      background-color: #323232;
+      color: white;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      animation: fadeIn 0.3s;
+      margin-top: 10px;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .toast-content.success {
+      background-color: var(--primary-color);
+    }
+
+    .toast-content.error {
+      background-color: var(--danger-color);
+    }
+
+    .toast-content.info {
+      background-color: var(--secondary-color);
+    }
+
+    /* 空白和錯誤狀態 */
+    .empty-state,
+    .error-message {
+      text-align: center;
+      padding: 50px 0;
+      font-size: 1.3rem;
+    }
+
+    .error-message {
+      color: var(--danger-color);
+    }
+
+    /* 響應式調整 */
+    @media (max-width: 768px) {
+      body {
+        padding: 10px;
+      }
+
+      .container {
+        padding: 15px;
+      }
+
+      h1 {
+        font-size: 1.8rem;
+      }
+
+      .btn {
+        font-size: 1rem;
+        padding: 10px 15px;
+      }
+
+      table {
+        font-size: 0.9rem;
+      }
+
+      th,
+      td {
+        padding: 10px 5px;
+      }
+
+      .action-buttons {
+        flex-direction: column;
+      }
+
+      .modal-content {
+        width: 95%;
+        padding: 20px;
+      }
+    }
+    /* 在現有的 styles.css 文件中添加以下內容 */
+
+    /* 日期單元格樣式 */
+    .date-cell {
+      position: relative;
+    }
+
+    .date-display {
+      cursor: pointer;
+      padding: 5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .date-display:hover {
+      background-color: #e8f5e9;
+    }
+
+    .edit-icon {
+      font-size: 1rem;
+      color: var(--primary-color);
+      margin-left: 8px;
+      opacity: 0.7;
+    }
+
+    .date-display:hover .edit-icon {
+      opacity: 1;
+    }
+
+    /* 日期選擇器對話框 */
+    .date-picker-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1100;
+    }
+
+    .date-picker-content {
+      width: 90%;
+      max-width: 400px;
+      background-color: white;
+      padding: 30px;
+      border-radius: var(--border-radius);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .date-time-picker {
+      width: 100%;
+      padding: 12px;
+      font-size: 1.2rem;
+      border: 1px solid var(--gray);
+      border-radius: 4px;
+      margin: 20px 0;
+    }
+
+    /* Flatpickr 樣式覆蓋 */
+    .flatpickr-calendar {
+      font-family: 'Microsoft JhengHei', Arial, sans-serif;
+      box-shadow: 0 3px 13px rgba(0, 0, 0, 0.2);
+    }
+
+    .flatpickr-day.selected,
+    .flatpickr-day.startRange,
+    .flatpickr-day.endRange,
+    .flatpickr-day.selected.inRange,
+    .flatpickr-day.startRange.inRange,
+    .flatpickr-day.endRange.inRange,
+    .flatpickr-day.selected:focus,
+    .flatpickr-day.startRange:focus,
+    .flatpickr-day.endRange:focus,
+    .flatpickr-day.selected:hover,
+    .flatpickr-day.startRange:hover,
+    .flatpickr-day.endRange:hover,
+    .flatpickr-day.selected.prevMonthDay,
+    .flatpickr-day.startRange.prevMonthDay,
+    .flatpickr-day.endRange.prevMonthDay,
+    .flatpickr-day.selected.nextMonthDay,
+    .flatpickr-day.startRange.nextMonthDay,
+    .flatpickr-day.endRange.nextMonthDay {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+
+    .flatpickr-time input:hover,
+    .flatpickr-time .flatpickr-am-pm:hover,
+    .flatpickr-time input:focus,
+    .flatpickr-time .flatpickr-am-pm:focus {
+      background-color: #e8f5e9;
+    }
+
+    /* 響應式調整 */
+    @media (max-width: 768px) {
+      .date-picker-content {
+        width: 95%;
+        padding: 20px;
+      }
+
+      .date-time-picker {
+        font-size: 1rem;
+        padding: 10px;
+      }
+    }
+  </style>
+</html>

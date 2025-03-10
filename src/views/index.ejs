@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>無障礙血壓紀錄系統</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- 移除Bootstrap依賴，使用自定義樣式 -->
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-wrapper">
+      <header class="app-header">
+        <div class="container">
+          <h1 onclick="location.reload()" class="app-title">無障礙血壓紀錄系統</h1>
+        </div>
+      </header>
+
+      <main class="container">
+        <div id="app">
+          <!-- 輸入區塊 -->
+          <div class="card" v-if="isContainerVisible">
+            <div class="input-container">
+              <h2>收縮壓</h2>
+              <div class="input-group">
+                <input type="number" v-model="BPH" placeholder="請輸入收縮壓數值" />
+                <span class="unit">mmHg</span>
+              </div>
+              <p v-if="BPHWarn" class="warning-text">{{ BPHWarn }}</p>
+
+              <h2>舒張壓</h2>
+              <div class="input-group">
+                <input type="number" v-model="BPL" placeholder="請輸入舒張壓數值" />
+                <span class="unit">mmHg</span>
+              </div>
+              <p v-if="BPLWarn" class="warning-text">{{ BPLWarn }}</p>
+
+              <h2>脈搏</h2>
+              <div class="input-group">
+                <input type="number" v-model="Pulse" placeholder="請輸入脈搏數值" />
+                <span class="unit">次/分鐘</span>
+              </div>
+              <p v-if="PulseWarn" class="warning-text">{{ PulseWarn }}</p>
+
+              <div class="button-group">
+                <button class="btn primary" @click="send">送出紀錄</button>
+                <button class="btn secondary" @click="changeToView">查看歷史紀錄</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 成功送出後顯示區塊 -->
+          <div class="card" v-if="isPostedVisible">
+            <div class="success-container">
+              <div class="success-icon">✓</div>
+              <h2 class="success-message">血壓紀錄已經送出成功</h2>
+
+              <!-- 最近紀錄區塊 -->
+              <div class="recent-records" v-if="isHistoryVisible">
+                <h2>最近十筆血壓紀錄</h2>
+
+                <div class="loading-spinner" v-if="loading">
+                  <div class="spinner"></div>
+                  <p>載入中...</p>
+                </div>
+
+                <div v-else-if="recentRecords.length === 0" class="empty-state">
+                  <p>沒有血壓紀錄</p>
+                </div>
+
+                <div v-else class="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>日期</th>
+                        <th>收縮壓</th>
+                        <th>舒張壓</th>
+                        <th>心跳</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="record in recentRecords" :key="record.id">
+                        <td>{{ formatDate(record.date) }}</td>
+                        <td>{{ record.systolic }} mmHg</td>
+                        <td>{{ record.diastolic }} mmHg</td>
+                        <td>{{ record.pulse }} 次/分</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="button-group">
+                <button class="btn primary" @click="BackToMain">繼續紀錄</button>
+                <button class="btn secondary" @click="changeToView">查看全部紀錄</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 提示訊息 -->
+          <div class="toast" v-if="toast.show">
+            <div :class="['toast-content', toast.type]">
+              {{ toast.message }}
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <footer class="app-footer">
+        <div class="container">
+          <p>&copy; 2025 無障礙血壓紀錄系統 | 關心您的健康</p>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      const { createApp, reactive } = Vue;
+
+      createApp({
+        data() {
+          return {
+            BPH: '',
+            BPL: '',
+            Pulse: '',
+            BPHWarn: '',
+            BPLWarn: '',
+            PulseWarn: '',
+            isContainerVisible: false,
+            isPostedVisible: false,
+            isHistoryVisible: false,
+            recentRecords: [],
+            loading: false,
+            toast: {
+              show: false,
+              message: '',
+              type: 'info',
+              timeout: null,
+            },
+          };
+        },
+        methods: {
+          // 顯示提示訊息
+          showToast(message, type = 'info', duration = 3000) {
+            if (this.toast.timeout) {
+              clearTimeout(this.toast.timeout);
+            }
+
+            this.toast.message = message;
+            this.toast.type = type;
+            this.toast.show = true;
+
+            this.toast.timeout = setTimeout(() => {
+              this.toast.show = false;
+            }, duration);
+          },
+
+          // 檢查輸入
+          check() {
+            this.BPHWarn = this.BPH === '' ? '請填入收縮壓' : '';
+            this.BPLWarn = this.BPL === '' ? '請填入舒張壓' : '';
+            this.PulseWarn = this.Pulse === '' ? '請填入脈搏' : '';
+
+            if (this.BPH !== '' && parseInt(this.BPH) > 250) {
+              this.BPHWarn = '收縮壓數值過高，請確認';
+            }
+
+            if (this.BPL !== '' && parseInt(this.BPL) > 150) {
+              this.BPLWarn = '舒張壓數值過高，請確認';
+            }
+
+            if (this.Pulse !== '' && parseInt(this.Pulse) > 200) {
+              this.PulseWarn = '脈搏數值過高，請確認';
+            }
+
+            return this.BPH !== '' && this.BPL !== '' && this.Pulse !== '' && !this.BPHWarn && !this.BPLWarn && !this.PulseWarn;
+          },
+
+          // 送出記錄
+          send() {
+            if (!this.check()) return;
+
+            this.loading = true;
+
+            axios
+              .get(`./api/add`, {
+                params: {
+                  date: Date.now(),
+                  systolic: this.BPH,
+                  diastolic: this.BPL,
+                  pulse: this.Pulse,
+                },
+              })
+              .then((response) => {
+                this.showToast('血壓紀錄已成功儲存', 'success');
+                this.containerDisappear();
+                this.BPH = '';
+                this.BPL = '';
+                this.Pulse = '';
+                this.loading = false;
+              })
+              .catch((error) => {
+                console.log(error);
+                this.showToast('儲存失敗，請再試一次', 'error');
+                this.loading = false;
+              });
+          },
+
+          // 返回主輸入頁面
+          BackToMain() {
+            this.isPostedVisible = false;
+            this.isContainerVisible = true;
+            this.containerAppear();
+            this.fetchRecentRecords();
+          },
+
+          // 完成輸入，顯示成功頁面
+          inFinish() {
+            this.isPostedVisible = true;
+            this.isContainerVisible = false;
+            this.fetchRecentRecords();
+          },
+
+          containerDisappear() {
+            this.isContainerVisible = false;
+            this.isPostedVisible = true;
+            this.fetchRecentRecords();
+          },
+
+          containerAppear() {
+            this.isContainerVisible = true;
+            this.isPostedVisible = false;
+          },
+
+          // 前往查看記錄頁面
+          changeToView() {
+            window.location.href = './result';
+          },
+
+          // 獲取最近記錄
+          fetchRecentRecords() {
+            this.loading = true;
+
+            axios
+              .get('./api/recent', {
+                params: {
+                  amount: 10,
+                },
+              })
+              .then((response) => {
+                const data = response.data;
+                this.recentRecords = data;
+                this.isHistoryVisible = true;
+                this.loading = false;
+              })
+              .catch((error) => {
+                console.log(error);
+                this.showToast('無法獲取最近記錄', 'error');
+                this.loading = false;
+              });
+          },
+
+          // 格式化日期
+          formatDate(timestamp) {
+            if (!timestamp) return '未記錄日期';
+
+            try {
+              const date = new Date(parseInt(timestamp));
+              if (isNaN(date)) return '無效日期';
+
+              return date.toLocaleDateString('zh-TW', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+            } catch (err) {
+              return timestamp;
+            }
+          },
+
+          // 密碼檢查
+          checkPassword() {
+            const password = '123';
+            let attempts = 3;
+
+            if (localStorage.getItem('logined') === 'true') {
+              this.containerAppear();
+            } else {
+              let input = prompt('請輸入密碼');
+              if (input === password) {
+                localStorage.setItem('logined', 'true');
+                this.containerAppear();
+              } else {
+                attempts--;
+                alert(`密碼錯誤，還有${attempts}次機會`);
+                if (attempts === 0) {
+                  alert('錯誤次數過多，請重新整理頁面');
+                }
+              }
+            }
+          },
+        },
+        created() {
+          this.checkPassword();
+          this.fetchRecentRecords();
+        },
+      }).mount('#app');
+    </script>
+  </body>
+  <style>
+    /* 全局變量 */
+    :root {
+      --primary-color: #4caf50;
+      --primary-dark: #388e3c;
+      --secondary-color: #2196f3;
+      --accent-color: #fb8c00;
+      --danger-color: #f44336;
+      --gray-light: #f5f5f5;
+      --gray: #e0e0e0;
+      --text-dark: #333333;
+      --text-light: #ffffff;
+      --border-radius: 8px;
+      --shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      --transition: all 0.3s ease;
+    }
+
+    /* 基本樣式重置 */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Microsoft JhengHei', Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text-dark);
+      background-color: var(--gray-light);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .app-wrapper {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* 容器樣式 */
+    .container {
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* 標題和文字樣式 */
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 0.5em;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+    }
+
+    h2 {
+      font-size: 2rem;
+      color: var(--primary-dark);
+    }
+
+    p {
+      margin-bottom: 1rem;
+    }
+
+    /* 頁首樣式 */
+    .app-header {
+      background-color: var(--primary-color);
+      color: var(--text-light);
+      padding: 1rem 0;
+      box-shadow: var(--shadow);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .app-title {
+      margin: 0;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .app-title:hover {
+      transform: scale(1.02);
+    }
+
+    /* 頁尾樣式 */
+    .app-footer {
+      background-color: var(--primary-dark);
+      color: var(--text-light);
+      padding: 1rem 0;
+      margin-top: auto;
+      text-align: center;
+      font-size: 0.9rem;
+    }
+
+    /* 主要內容區域 */
+    main {
+      flex: 1;
+      padding: 2rem 0;
+    }
+
+    /* 卡片樣式 */
+    .card {
+      background-color: white;
+      border-radius: var(--border-radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 2rem;
+      transition: var(--transition);
+    }
+
+    .card:hover {
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+    }
+
+    /* 輸入區域樣式 */
+    .input-container {
+      padding: 2rem;
+    }
+
+    /* 輸入框組樣式 */
+    .input-group {
+      position: relative;
+      margin-bottom: 2rem;
+    }
+
+    input {
+      width: 100%;
+      padding: 15px;
+      font-size: 1.5rem;
+      border: 2px solid var(--gray);
+      border-radius: var(--border-radius);
+      transition: border-color 0.3s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+
+    .unit {
+      position: absolute;
+      right: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dark);
+      opacity: 0.7;
+    }
+
+    /* 警告文字樣式 */
+    .warning-text {
+      color: var(--danger-color);
+      margin-top: 0.5rem;
+      font-size: 1rem;
+    }
+
+    /* 按鈕組樣式 */
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    /* 按鈕樣式 */
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 1rem;
+      font-size: 1.2rem;
+      font-weight: 700;
+      text-align: center;
+      border: none;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .primary {
+      background-color: var(--primary-color);
+      color: var(--text-light);
+    }
+
+    .primary:hover {
+      background-color: var(--primary-dark);
+    }
+
+    .secondary {
+      background-color: var(--secondary-color);
+      color: var(--text-light);
+    }
+
+    .secondary:hover {
+      background-color: #1976d2;
+    }
+
+    /* 成功信息樣式 */
+    .success-container {
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .success-icon {
+      background-color: var(--primary-color);
+      color: white;
+      width: 80px;
+      height: 80px;
+      font-size: 3rem;
+      line-height: 80px;
+      border-radius: 50%;
+      margin: 0 auto 1.5rem;
+    }
+
+    .success-message {
+      font-size: 1.8rem;
+      color: var(--primary-dark);
+      margin-bottom: 2rem;
+    }
+
+    /* 最近記錄區域 */
+    .recent-records {
+      margin: 2rem 0;
+    }
+
+    /* 空記錄狀態 */
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      background-color: var(--gray-light);
+      border-radius: var(--border-radius);
+    }
+
+    /* 表格樣式 */
+    .table-container {
+      overflow-x: auto;
+      margin: 1rem 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 12px 15px;
+      text-align: center;
+      border-bottom: 1px solid var(--gray);
+    }
+
+    th {
+      background-color: var(--primary-color);
+      color: var(--text-light);
+      font-weight: 700;
+    }
+
+    tr:nth-child(even) {
+      background-color: var(--gray-light);
+    }
+
+    tr:hover {
+      background-color: #e8f5e9;
+    }
+
+    /* 加載動畫 */
+    .loading-spinner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 0;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--gray);
+      border-radius: 50%;
+      border-top-color: var(--primary-color);
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* 提示訊息 */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      z-index: 1000;
+    }
+
+    .toast-content {
+      padding: 15px 25px;
+      border-radius: var(--border-radius);
+      background-color: #323232;
+      color: white;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      animation: fadeIn 0.3s;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .toast-content.success {
+      background-color: var(--primary-color);
+    }
+
+    .toast-content.error {
+      background-color: var(--danger-color);
+    }
+
+    .toast-content.info {
+      background-color: var(--secondary-color);
+    }
+
+    /* 響應式調整 */
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 1.8rem;
+      }
+
+      h2 {
+        font-size: 1.5rem;
+      }
+
+      input {
+        font-size: 1.2rem;
+        padding: 12px;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+
+      .success-icon {
+        width: 60px;
+        height: 60px;
+        font-size: 2rem;
+        line-height: 60px;
+      }
+
+      .success-message {
+        font-size: 1.5rem;
+      }
+
+      .toast {
+        bottom: 20px;
+        right: 20px;
+        left: 20px;
+      }
+    }
+
+    /* 大型螢幕優化 */
+    @media (min-width: 1200px) {
+      .input-container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+    }
+  </style>
+</html>
