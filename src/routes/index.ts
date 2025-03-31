@@ -1,85 +1,92 @@
+/* eslint-disable @typescript-eslint/no-misused-promises */
 import express from 'express';
-import initRouter from './init';
-import dataRouter from './dataManage';
-import { createBloodPressureTable } from '../db/init';
+import { sync } from '../db/db';
 import { addRecord, findAllData, findRecentData, findDateAfter, updateData, deleteData } from '../controllers/data';
 
 const router = express.Router();
 
-router.get('/', (req: express.Request, res: express.Response) => {
+router.get('/', async (req: express.Request, res: express.Response) => {
   res.send('This is api route');
-  createBloodPressureTable();
+  await sync();
 });
-router.get('/init', initRouter);
-router.get('/data', dataRouter);
 
-router.get('/add', (req, res) => {
+router.get('/add', async (req: express.Request, res: express.Response) => {
   console.log('123');
   const datas = {
-    date: req.query.date,
-    systolic: req.query.systolic,
-    diastolic: req.query.diastolic,
-    pulse: req.query.pulse,
+    date: parseInt(req.query.date as string),
+    systolic: parseInt(req.query.systolic as string),
+    diastolic: parseInt(req.query.diastolic as string),
+    pulse: parseInt(req.query.pulse as string),
   };
   console.log(datas);
-  const result = addRecord(datas);
-  res.send(result);
+  try {
+    const result = await addRecord(datas);
+    res.send(result);
+  } catch (error: any) {
+    res.status(500).send({ err: error.message });
+  }
 });
 
-router.get('/all', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  findAllData()
-    .then((result: any) => {
-      console.log(typeof result);
-      console.log(result);
-      res.send(result);
-    })
-    .catch((error: any) => {
-      res.status(500).send({ err: error });
-      next(error);
-    });
+router.get('/all', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    const result = await findAllData();
+    console.log(typeof result);
+    console.log(result);
+    res.send(result);
+  } catch (error: any) {
+    res.status(500).send({ err: error.message });
+    next(error);
+  }
 });
 
-router.get('/recent', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+router.get('/recent', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const amount = parseInt(req.query.amount as string);
-  findRecentData(amount)
-    .then((result: any) => {
-      res.json(result);
-    })
-    .catch((error) => {
-      res.status(500).send({ err: error });
-      next(error);
-    });
+  try {
+    const result = await findRecentData(amount);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).send({ err: error.message });
+    next(error);
+  }
 });
 
-router.get('/after', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+router.get('/after', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const date = req.query.date as string;
-  findDateAfter(date)
-    .then((result) => res.send(result))
-    .catch((error) => {
-      res.status(500).send({ err: error });
-      next(error);
-    });
+  try {
+    const result = await findDateAfter(date);
+    res.send(result);
+  } catch (error: any) {
+    res.status(500).send({ err: error.message });
+    next(error);
+  }
 });
 
-router.get('/update', (req: express.Request, res: express.Response) => {
+router.get('/update', async (req: express.Request, res: express.Response) => {
   const id = req.query.id as string;
   console.log('已經更新');
   const datas = {
-    date: req.query.date,
-    systolic: req.query.systolic,
-    diastolic: req.query.diastolic,
-    pulse: req.query.pulse,
+    date: parseInt(req.query.date as string),
+    systolic: parseInt(req.query.systolic as string),
+    diastolic: parseInt(req.query.diastolic as string),
+    pulse: parseInt(req.query.pulse as string),
   };
   console.log(datas);
-  updateData(id, datas)
-    .then(() => res.send({ status: 'success', message: 'Record updated' }))
-    .catch((error: any) => res.status(500).send({ err: error }));
+  try {
+    await updateData(id, datas);
+    res.send({ status: 'success', message: 'Record updated' });
+  } catch (error: any) {
+    res.status(500).send({ err: error.message });
+  }
 });
 
-router.get('/delete', (req: express.Request, res: express.Response) => {
+router.get('/delete', async (req: express.Request, res: express.Response) => {
   const id = req.query.id as string;
-  deleteData(id);
-  res.send({ status: 'success', message: 'Record deleted' });
+  try {
+    await deleteData(id);
+    res.send({ status: 'success', message: 'Record deleted' });
+  } catch (error: any) {
+    res.status(500).send({ err: error.message });
+  }
 });
 
 export default router;

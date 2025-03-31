@@ -1,33 +1,63 @@
-import { Sequelize, DataTypes, Model } from 'sequelize';
+import { Sequelize, DataTypes, Model, Op } from 'sequelize';
 import dotenv from 'dotenv';
+import path from 'path';
 
-// connect to postgres database
-
+// 載入環境變數 (在本地開發時需要)
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
 }
 
-let dbUrl: string;
-if (process.env.DATABASE_URL === undefined || process.env.DATABASE_URL === '') {
-  throw new Error('DATABASE_URL is not in env');
+let sequelize: Sequelize;
+
+if (process.env.NODE_ENV === 'production') {
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl == null) {
+    throw new Error('DATABASE_URL is not in env');
+  }
+
+  sequelize = new Sequelize(dbUrl, {
+    dialect: 'postgres',
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false,
+      },
+    },
+  });
 } else {
-  console.log('DATABASE_URL is set');
-  dbUrl = process.env.DATABASE_URL;
+  const dbPath = path.resolve(__dirname, 'database.sqlite');
+  sequelize = new Sequelize({
+    dialect: 'sqlite',
+    storage: dbPath,
+  });
 }
 
-const sequelize = new Sequelize(dbUrl);
-
-// Test the database connection
+// 測試資料庫連線
 sequelize
   .authenticate()
   .then(() => {
     console.log('Connection has been established successfully.');
   })
-  .catch((err) => {
-    console.error('Unable to connect to the database:', err);
+  .catch((err: Error) => {
+    console.error('Unable to connect to the database:', err.message);
   });
 
-class BloodPressure extends Model {}
+interface BloodPressureAttributes {
+  id: string;
+  date: Date;
+  systolic: number;
+  diastolic: number;
+  pulse: number;
+}
+
+class BloodPressure extends Model<BloodPressureAttributes> implements BloodPressureAttributes {
+  public id!: string;
+  public date!: Date;
+  public systolic!: number;
+  public diastolic!: number;
+  public pulse!: number;
+}
+
 BloodPressure.init(
   {
     id: {
@@ -49,7 +79,9 @@ BloodPressure.init(
   },
   {
     sequelize,
-    modelName: 'blood_pressure',
+    modelName: 'BloodPressure',
+    tableName: 'blood_pressure',
+    timestamps: false,
   },
 );
 
@@ -57,4 +89,4 @@ async function sync(): Promise<void> {
   await sequelize.sync();
 }
 
-export { sequelize, init };
+export { sequelize, BloodPressure, sync, Op };
