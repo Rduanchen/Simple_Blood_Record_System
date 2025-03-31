@@ -11,7 +11,6 @@ router.get('/', async (req: express.Request, res: express.Response) => {
 });
 
 router.get('/add', async (req: express.Request, res: express.Response) => {
-  console.log('123');
   const datas = {
     date: parseInt(req.query.date as string),
     systolic: parseInt(req.query.systolic as string),
