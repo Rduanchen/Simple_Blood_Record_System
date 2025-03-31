@@ -3,34 +3,27 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 // 載入環境變數 (在本地開發時需要)
-if (process.env.NODE_ENV !== 'production') {
-  dotenv.config();
-}
+dotenv.config();
 
 let sequelize: Sequelize;
 
-if (process.env.NODE_ENV === 'production') {
-  const dbUrl = process.env.DATABASE_URL;
-  if (dbUrl == null) {
-    throw new Error('DATABASE_URL is not in env');
-  }
-
-  sequelize = new Sequelize(dbUrl, {
-    dialect: 'postgres',
-    dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false,
-      },
-    },
-  });
-} else {
-  const dbPath = path.resolve(__dirname, 'database.sqlite');
-  sequelize = new Sequelize({
-    dialect: 'sqlite',
-    storage: dbPath,
-  });
+const dbUrl = process.env.DATABASE_URL;
+if (!dbUrl) {
+  throw new Error('DATABASE_URL is not in env');
 }
+
+sequelize = new Sequelize(dbUrl, {
+  dialect: 'postgres',
+  dialectOptions: {
+    ssl:
+      process.env.NODE_ENV === 'production'
+        ? {
+            require: true,
+            rejectUnauthorized: false,
+          }
+        : false,
+  },
+});
 
 // 測試資料庫連線
 sequelize
