@@ -11,8 +11,10 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT ?? 8000;
 
-app.set('views', path.join(__dirname, 'views'));
-app.set('views', './src/views');
+app.set('port', PORT);
+console.log(`__dirname: ${__dirname}`);
+console.log(`path${path.join(__dirname, './views')}`);
+app.set('views', path.join(__dirname, './views'));
 app.set('view engine', 'ejs');
 
 app.use(cors());

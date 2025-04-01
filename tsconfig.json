@@ -4,12 +4,14 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "resolveJsonModule": true,
-    "baseUrl": ".",
+    "rootDir": "./",
     "outDir": "build",
     "sourceMap": true,
-    "strict": true,
     "esModuleInterop": true,
     "types": ["node", "jest"],
+    "skipLibCheck": true,
+    "strict": true,
+    "baseUrl": "./",
     "plugins": [
       {
         "transform": "typescript-transform-paths"
