@@ -5,14 +5,12 @@ import path from 'path';
 // 載入環境變數 (在本地開發時需要)
 dotenv.config();
 
-let sequelize: Sequelize;
-
 const dbUrl = process.env.DATABASE_URL;
 if (!dbUrl) {
   throw new Error('DATABASE_URL is not in env');
 }
 
-sequelize = new Sequelize(dbUrl, {
+const sequelize: Sequelize = new Sequelize(dbUrl, {
   dialect: 'postgres',
   dialectOptions: {
     ssl:
@@ -78,8 +76,45 @@ BloodPressure.init(
   },
 );
 
+interface UserNotificationServiceAttributes {
+  id: string;
+  userId: string;
+  notificationId: string;
+  createdAt: Date;
+}
+class UserNotificationService extends Model<UserNotificationServiceAttributes> implements UserNotificationServiceAttributes {
+  public id!: string;
+  public userId!: string;
+  public notificationId!: string;
+  public createdAt!: Date;
+}
+
+UserNotificationService.init(
+  {
+    id: {
+      type: DataTypes.STRING,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.STRING,
+    },
+    notificationId: {
+      type: DataTypes.STRING,
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+    },
+  },
+  {
+    sequelize,
+    modelName: 'UserNotificationService',
+    tableName: 'user_notification_service',
+    timestamps: false,
+  },
+);
+
 async function sync(): Promise<void> {
   await sequelize.sync();
 }
 
-export { sequelize, BloodPressure, sync, Op };
+export { sequelize, BloodPressure, sync, Op, UserNotificationService };
