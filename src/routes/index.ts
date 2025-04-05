@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-misused-promises */
 import express from 'express';
 import { sync } from '../db/db';
-import admin from 'firebase-admin';
 import {
   addRecord,
   findAllData,
@@ -10,9 +9,10 @@ import {
   updateData,
   deleteData,
   saveuserNotificationService,
-  // findAllUserNotificationService,
+  findAllUserNotificationService,
 } from '../controllers/data';
-import axios from 'axios';
+import { checkAndSendAlert } from '../controllers/alert';
+import { message } from '../controllers/sendNotification';
 
 const router = express.Router();
 
@@ -28,9 +28,13 @@ router.get('/add', async (req: express.Request, res: express.Response) => {
     diastolic: parseInt(req.query.diastolic as string),
     pulse: parseInt(req.query.pulse as string),
   };
-  console.log(datas);
   try {
     const result = await addRecord(datas);
+    await checkAndSendAlert({
+      systolic: datas.systolic,
+      diastolic: datas.diastolic,
+      pulse: datas.pulse,
+    });
     res.send(result);
   } catch (error: any) {
     res.status(500).send({ err: error.message });
@@ -99,17 +103,16 @@ router.get('/delete', async (req: express.Request, res: express.Response) => {
   }
 });
 
-router.post('/register-token', async (req, res) => {
+router.post('/add-token', async (req, res) => {
+  const { token } = req.body;
+  console.log('接收到的token:', token);
+  const userId = '1';
+  if (token == null || userId == null) {
+    return res.status(400).json({ error: '缺少必要參數' });
+  }
+
   try {
-    const { token, userId } = req.body;
-
-    if (token == null || userId == null) {
-      return res.status(400).json({ error: '缺少必要參數' });
-    }
-
-    // 更新或建立新的 token 記錄
     await saveuserNotificationService(userId as string, token as string);
-
     res.status(200).json({ success: true, message: 'Token 已註冊' });
   } catch (error) {
     console.error('註冊 Token 時出錯:', error);
@@ -117,28 +120,42 @@ router.post('/register-token', async (req, res) => {
   }
 });
 
-// router.get('/test-send-messeage', async (req, res) => {
-//   const result = await findAllUserNotificationService();
-//   const tokens = result.map((item) => item.notificationId);
-//   const message = {
-//     notification: {
-//       title: '測試標題',
-//       body: '測試內容',
-//     },
-//     data: {
-//       key1: 'value1',
-//       key2: 'value2',
-//     },
-//     token: tokens,
+// router.get('/send-notification', async (req: express.Request, res: express.Response) => {
+//   const bloodPressureData = {
+//     systolic: 190,
+//     diastolic: 90,
+//     pulse: 80,
 //   };
+//   const userName = '用戶名稱';
+//   const tokens = ['token1', 'token2']; // 用戶的通知令牌列表
+//   const notifier = new BloodPressureNotifier(userName, tokens);
 //   try {
-//     const response = await admin.messaging().sendMulticast(message);
-//     console.log('Successfully sent message:', response);
-//     res.status(200).json({ success: true, response });
-//   } catch (error) {
-//     console.error('Error sending message:', error);
-//     res.status(500).json({ error: 'Error sending message' });
+//     await notifier.sendBloodPressureNotification(bloodPressureData);
+//     res.send({ status: 'success', message: 'Notification sent' });
+//   } catch (error: any) {
+//     res.status(500).send({ err: error.message });
 //   }
 // });
+
+router.get('/test-notification', async (req: express.Request, res: express.Response) => {
+  const tokenData = await findAllUserNotificationService();
+  const token = tokenData.map((item) => item.notificationId);
+  const notification = {
+    notification: {
+      title: '測試通知',
+      body: '這是一個測試通知',
+    },
+    tokens: token,
+  };
+  console.log('Sending notification:', notification);
+  try {
+    const response = await message.sendEachForMulticast(notification);
+    console.log('Successfully sent message:', response);
+    res.send({ status: 'success', message: 'Notification sent' });
+  } catch (error) {
+    console.error('Error sending message:', error);
+    // res.status(500).send({ err: error.message });
+  }
+});
 
 export default router;
