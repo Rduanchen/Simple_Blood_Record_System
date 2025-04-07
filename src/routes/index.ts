@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-misused-promises */
 import express from 'express';
-import { sync } from '../db/db';
+import { sync } from '../db/database';
 import {
   addRecord,
   findAllData,

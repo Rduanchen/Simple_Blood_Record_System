@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { BloodPressure, Op, UserNotificationService } from '../db/db';
+import { BloodPressure, Op, UserNotificationService } from '../db/database';
 
 interface RecordData {
   date: number;
