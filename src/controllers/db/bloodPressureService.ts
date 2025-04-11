@@ -2,14 +2,14 @@ import { BloodPressure } from '../../db/models';
 import { Op } from 'sequelize';
 import { v4 as uuidv4 } from 'uuid';
 
-interface BloodPressureData {
+export interface BloodPressureData {
   date: Date;
   systolic: number;
   diastolic: number;
   pulse: number;
 }
 
-interface BloodPressureRecord extends BloodPressureData {
+export interface BloodPressureRecord extends BloodPressureData {
   id: string;
   userId: string;
   createdAt: Date;
