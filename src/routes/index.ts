@@ -212,15 +212,15 @@ router.post('/notification/add', async (req: AuthenticatedRequest, res: Response
     return;
   }
 
-  const { notificationId, deviceName } = req.body;
+  const { notificationId } = req.body;
 
-  if (notificationId === undefined || deviceName === undefined) {
-    res.status(400).json({ error: '缺少必要的參數 (notificationId 或 deviceName)' });
+  if (notificationId === undefined) {
+    res.status(400).json({ error: '缺少必要的參數 (notificationId)' });
     return;
   }
 
   try {
-    const newService = await createNotificationService(userId, { notificationId, deviceName });
+    const newService = await createNotificationService(userId, { notificationId });
     res.status(201).json(newService);
   } catch (error: any) {
     res.status(500).json({ error: '新增失敗', details: error.message });
@@ -338,7 +338,7 @@ router.delete('/user/delete', async (req: AuthenticatedRequest, res: Response): 
 
   try {
     const success = await deleteUser(userId);
-    if (success) {
+    if (!success) {
       res.status(404).json({ error: '使用者不存在或無權限' });
       return;
     }

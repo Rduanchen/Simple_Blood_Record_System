@@ -4,7 +4,6 @@ interface UserNotificationServiceAttributes {
   id: string;
   userId: string;
   notificationId: string;
-  deviceName: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -13,7 +12,6 @@ class UserNotificationService extends Model<UserNotificationServiceAttributes> i
   public id!: string;
   public userId!: string;
   public notificationId!: string;
-  public deviceName!: string;
   public createdAt!: Date;
   public updatedAt!: Date;
 }
@@ -36,10 +34,6 @@ export const initUserNotificationServiceModel = (sequelize: Sequelize): typeof U
         onDelete: 'CASCADE',
       },
       notificationId: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-      deviceName: {
         type: DataTypes.STRING,
         allowNull: false,
       },

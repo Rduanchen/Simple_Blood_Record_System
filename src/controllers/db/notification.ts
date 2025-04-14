@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from 'uuid';
 
 interface NotificationServiceData {
   notificationId: string;
-  deviceName: string;
 }
 
 interface NotificationServiceRecord extends NotificationServiceData {

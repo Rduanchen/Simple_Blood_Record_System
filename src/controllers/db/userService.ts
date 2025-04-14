@@ -18,8 +18,9 @@ interface UserRecord extends UserData {
  * 創建新使用者
  */
 export async function createUser(userData: UserData): Promise<UserRecord> {
+  const userID = uuidv4();
   const user = await User.create({
-    id: uuidv4(),
+    id: userID,
     ...userData,
     lastLoginDate: userData.lastLoginDate ?? new Date(),
     createdAt: new Date(),
