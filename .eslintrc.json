@@ -4,7 +4,7 @@
     "node": true,
     "jest/globals": true
   },
-  "extends": ["standard-with-typescript", "prettier"],
+  "extends": ["standard-with-typescript", "prettier", "eslint:recommended"],
   "plugins": ["jest", "prettier"],
   "parserOptions": {
     "ecmaVersion": "latest",
@@ -23,6 +23,16 @@
         "arrowParens": "always"
       }
     ],
-    "@typescript-eslint/unbound-method": "off"
+    "@typescript-eslint/unbound-method": "off",
+    "@typescript-eslint/explicit-function-return-type": "error",
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": "error",
+    "@typescript-eslint/no-non-null-assertion": "error",
+    "no-console": "warn",
+    "eqeqeq": ["error", "always"],
+    "no-var": "error",
+    "prefer-const": "error",
+    "prefer-arrow-callback": "error",
+    "no-duplicate-imports": "error"
   }
 }

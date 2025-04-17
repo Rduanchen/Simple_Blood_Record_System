@@ -1,29 +1,18 @@
 import express from 'express';
-import { syncDatabase } from '../db/database';
-import bloodPressureRoutes from './bloodPressure';
-import notificationRoutes from './notification';
-import userRoutes from './user';
-
-import { asyncHandler } from '../middleware/asyncHandler';
+import userRoutes from './userRoutes';
+import bloodPressureRoutes from './bloodPressureRoutes';
+import safetyMonitorRoutes from './safetyMonitorRoutes';
+import shareCodeRoutes from './shareCodeRoutes';
+import accessRoutes from './accessRoutes';
+import notificationRoutes from './notificationRoutes';
 
 const router = express.Router();
 
-// Test and database sync route
-router.get(
-  '/sync',
-  asyncHandler(async (req: express.Request, res: express.Response): Promise<void> => {
-    try {
-      await syncDatabase();
-      res.status(200).send('Database sync completed successfully');
-    } catch (error: any) {
-      res.status(500).json({ error: 'Database sync failed', details: error.message });
-    }
-  }),
-);
-
-// Register route modules
+router.use('/users', userRoutes);
 router.use('/blood-pressure', bloodPressureRoutes);
-router.use('/notification', notificationRoutes);
-router.use('/user', userRoutes);
+router.use('/safety-monitor', safetyMonitorRoutes);
+router.use('/share-codes', shareCodeRoutes);
+router.use('/access', accessRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;
