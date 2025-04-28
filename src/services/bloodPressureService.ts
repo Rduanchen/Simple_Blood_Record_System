@@ -58,8 +58,8 @@ export const getBloodPressuresPaginated = async (
 export const getBloodPressuresByDateRange = async (
   userId: string,
   requesterId: string,
-  startDate: Date,
-  endDate: Date,
+  startDate: Date = new Date(new Date().setDate(new Date().getDate() - 30)),
+  endDate: Date = new Date(),
 ): Promise<BloodPressureAttributes[]> => {
   // Check if requester has access to the data
   if (userId !== requesterId) {
