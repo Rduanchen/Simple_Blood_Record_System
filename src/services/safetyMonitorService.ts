@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { SafetyMonitor } from '../models';
+import SafetyMonitor from '../models/SafetyMonitor';
 import { SafetyMonitorAttributes, WarningBasis } from '../models/SafetyMonitor';
 import { BloodPressureAttributes } from '../models/BloodPressure';
 import { sendNotificationToTopic } from './notificationService';
